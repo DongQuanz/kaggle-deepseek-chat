@@ -1,0 +1,15 @@
+{
+  "id": "your-kaggle-username/deepseek-r1-32b-local-chat",
+  "title": "Deepseek R1 32b Local Chat",
+  "code_file": "deepseek.ipynb",
+  "language": "python",
+  "kernel_type": "notebook",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_internet": true,
+  "machine_shape": "NvidiaTeslaT4",
+  "dataset_sources": [],
+  "competition_sources": [],
+  "kernel_sources": [],
+  "model_sources": []
+}
