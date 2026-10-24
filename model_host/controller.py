@@ -17,13 +17,23 @@ class Controller:
         self.lock = threading.RLock()
         self.state = ROOT / ".state"
         self.state.mkdir(exist_ok=True)
+        if self.state.is_symlink():
+            raise RuntimeError("Refusing a symlinked secret directory")
+        if os.name != "nt":
+            self.state.chmod(0o700)
+            for name in ("access.json", "host-access.json", "private-key.pem"):
+                path = self.state / name
+                if path.is_symlink():
+                    raise RuntimeError("Refusing a symlinked secret file")
+                if path.exists():
+                    path.chmod(0o600)
         credentials = self.state / "access.json"
         if credentials.exists():
             self.auth = json.loads(credentials.read_text())
         else:
             self.auth = {"username": os.getenv("GRADIO_USER", "model-user"),
                          "password": os.getenv("GRADIO_PASSWORD") or secrets.token_urlsafe(24)}
-            credentials.write_text(json.dumps(self.auth), encoding="utf-8")
+            self.write_secret(credentials, json.dumps(self.auth).encode())
         self.report = {}
         self.host_auth = {}
         self.kernel = None
@@ -75,6 +85,27 @@ class Controller:
                     pass
 
     @staticmethod
+    def write_secret(path, data):
+        if path.is_symlink():
+            raise RuntimeError("Refusing a symlinked secret file")
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "wb") as stream:
+            stream.write(data)
+        if os.name != "nt":
+            path.chmod(0o600)
+
+    @staticmethod
+    def validate_host_url(value):
+        from urllib.parse import urlsplit
+        url = urlsplit(value)
+        if (url.scheme != "https" or not (url.hostname or "").endswith(".gradio.live")
+                or url.username is not None or url.password is not None
+                or url.port not in (None, 443) or url.path not in ("", "/")
+                or url.query or url.fragment):
+            raise ValueError("Expected an HTTPS gradio.live origin without credentials or redirects")
+        return value
+
+    @staticmethod
     def api():
         from kaggle.api.kaggle_api_extended import KaggleApi
         api = KaggleApi()
@@ -98,7 +129,7 @@ class Controller:
         path = self.state / "private-key.pem"
         if not path.exists():
             key = rsa.generate_private_key(public_exponent=65537, key_size=4096)
-            path.write_bytes(key.private_bytes(serialization.Encoding.PEM,
+            self.write_secret(path, key.private_bytes(serialization.Encoding.PEM,
                 serialization.PrivateFormat.PKCS8, serialization.NoEncryption()))
         key = serialization.load_pem_private_key(path.read_bytes(), password=None)
         return key.public_key().public_bytes(serialization.Encoding.PEM,
@@ -131,13 +162,10 @@ class Controller:
                     mgf=padding.MGF1(hashes.SHA256()), algorithm=hashes.SHA256(), label=None)))
                 if access.get("run_id") != self.run_id:
                     continue
-                from urllib.parse import urlparse
-                url = urlparse(access["url"])
-                if url.scheme != "https" or not (url.hostname or "").endswith(".gradio.live"):
-                    raise ValueError("Expected HTTPS gradio.live host URL")
+                self.validate_host_url(access["url"])
                 self.host_auth = access
                 self.report["gradio_url"] = access["url"]
-                (self.state / "host-access.json").write_text(json.dumps(access), encoding="utf-8")
+                self.write_secret(self.state / "host-access.json", json.dumps(access).encode())
                 self.last_access = encrypted
         self.persist()
 
@@ -248,8 +276,10 @@ class Controller:
             raise RuntimeError("Kaggle is not ready. Check notebook status and progress.")
         if self.finished or self.report.get("stopped"):
             raise RuntimeError("Kaggle session has ended. Start notebook to allocate a new session.")
+        self.validate_host_url(self.host_auth["url"])
         return Client(self.host_auth["url"], auth=(self.host_auth["username"], self.host_auth["password"]),
-                      verbose=False, httpx_kwargs={"timeout": 30})
+                      token=False, download_files=False, verbose=False,
+                      httpx_kwargs={"timeout": 30, "follow_redirects": False})
 
     def stop(self):
         self.stop_requested = True

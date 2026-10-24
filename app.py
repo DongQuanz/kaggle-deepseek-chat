@@ -47,7 +47,7 @@ def main():
     try:
         response = requests.get("http://127.0.0.1:7861/config", timeout=1)
         existing = response.json() if response.ok else {}
-        if existing.get("title") == "DeepSeek R1 · Local Chat":
+        if response.status_code == 401 or existing.get("title") == "DeepSeek R1 · Local Chat":
             print("Local UI already running: http://127.0.0.1:7861. Use Start notebook in that window.")
             if args.open_browser:
                 import webbrowser
@@ -57,9 +57,12 @@ def main():
         pass
     controller = Controller()
     demo = build_chat(controller.stream, title="DeepSeek R1 · Local Chat", controls=controls)
-    auth = (controller.auth["username"], controller.auth["password"]) if args.share else None
+    if not controller.auth.get("username") or not controller.auth.get("password"):
+        raise RuntimeError("Local console credentials must not be empty")
+    auth = (controller.auth["username"], controller.auth["password"])
     demo.launch(server_name="127.0.0.1", server_port=7861, share=args.share, auth=auth,
-                prevent_thread_lock=True, inbrowser=args.open_browser, quiet=True, mcp_server=False)
+                prevent_thread_lock=True, inbrowser=args.open_browser, quiet=True, mcp_server=False,
+                strict_cors=True, blocked_paths=[str(controller.state), str(controller.state.parent / ".runs")])
     if os.getenv("HOST_DEBUG_QUEUE") == "1":
         import threading
         import time

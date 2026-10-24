@@ -11,11 +11,15 @@ def clean_messages(messages):
     if not isinstance(messages, list) or not messages or len(messages) > 200:
         raise ValueError("Conversation must contain 1–200 messages.")
     result = []
+    total_bytes = 0
     for msg in messages:
-        if msg.get("role") not in {"user", "assistant"} or not isinstance(msg.get("content"), str):
+        if not isinstance(msg, dict) or msg.get("role") not in {"user", "assistant"} or not isinstance(msg.get("content"), str):
             raise ValueError("Only plain user/assistant messages are accepted.")
         if "reasoning_content" in msg and not isinstance(msg["reasoning_content"], str):
             raise ValueError("Reasoning history must be plain text.")
+        total_bytes += len(msg["content"].encode("utf-8")) + len(msg.get("reasoning_content", "").encode("utf-8"))
+        if total_bytes > 1024 * 1024:
+            raise ValueError("Conversation exceeds the 1 MiB text limit")
         result.append({k: msg[k] for k in ("role", "content", "reasoning_content") if k in msg})
     return result
 
@@ -127,7 +131,7 @@ def build_chat(stream, title="DeepSeek R1 · 32B", controls=None):
                 new = gr.Button("New Chat")
                 clear = gr.Button("Clear conversation")
             with gr.Column(scale=4):
-                chat = gr.Chatbot(height="max(260px, calc(100vh - 360px))", label="Conversation", render_markdown=True,
+                chat = gr.Chatbot(height="max(260px, calc(100vh - 360px))", label="Conversation", render_markdown=True, sanitize_html=True,
                                   latex_delimiters=[{"left": "$$", "right": "$$", "display": True},
                                                     {"left": "\\[", "right": "\\]", "display": True},
                                                     {"left": "\\(", "right": "\\)", "display": False},
@@ -216,7 +220,7 @@ def launch_host(runtime):
         import secrets
         password = secrets.token_urlsafe(24)
         os.environ["GRADIO_PASSWORD"] = password
-        print("Inline notebook login — username:", username, "password:", password)
+        print("Inline login password generated in GRADIO_PASSWORD. Retrieve it privately from the runtime environment; do not publish it in notebook output.")
 
     def host_status():
         runtime.vram()
@@ -236,7 +240,8 @@ def launch_host(runtime):
     _, local_url, share_url = demo.launch(server_name="127.0.0.1", server_port=7860, share=share,
                                           auth=(username, password) if share else None,
                                           inline=mode == "A", prevent_thread_lock=True, quiet=True,
-                                          show_error=True, mcp_server=False)
+                                          show_error=False, mcp_server=False, strict_cors=True,
+                                          blocked_paths=["/kaggle", "/root", "/tmp", "/var/tmp"])
     runtime.CONFIG["demo"] = demo
     if share and not share_url:
         raise RuntimeError("Gradio share tunnel failed; localhost remains private. Retry the UI cell.")

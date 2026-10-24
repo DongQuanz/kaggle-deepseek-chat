@@ -90,6 +90,8 @@ def test_real_gradio_authenticated_stream_and_stop(tmp_path, monkeypatch):
         monkeypatch.setattr(module, "ROOT", tmp_path)
         local = module.Controller(monitor=False)
         local.host_auth = {"url": url, "username": "tester", "password": "temporary-test-password"}
+        # Only this isolated integration fixture may connect to an HTTP test server.
+        monkeypatch.setattr(local, "validate_host_url", lambda value: value)
         async def bridge():
             return [result async for result in local.stream([{"role": "user", "content": "bridge"}],
                                                            .6, .95, 32, "Keep recent turns")]

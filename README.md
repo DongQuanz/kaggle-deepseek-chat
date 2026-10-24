@@ -1,5 +1,7 @@
 # Kaggle DeepSeek Chat
 
+**Security status:** known Pillow dependency advisories remain because the current Gradio release requires Pillow below its patched major version. See [SECURITY.md](SECURITY.md) before deployment. This release is not approved for an untrusted public multi-tenant service.
+
 A local Gradio chat interface for **DeepSeek-R1-Distill-Qwen-32B**, hosted on a private Kaggle notebook with **two NVIDIA T4 GPUs**. Start the notebook, monitor progress, chat, and request shutdown without copying URLs from Kaggle.
 
 Uses llama.cpp with CUDA and exactly `bartowski/DeepSeek-R1-Distill-Qwen-32B-GGUF/DeepSeek-R1-Distill-Qwen-32B-Q4_K_M.gguf`. This is quantized inference, not LoRA/QLoRA training or full-precision inference. No system prompt is added; the GGUF chat template is used. The model has no browsing, retrieval, MCP, execution agent, or external tools.
@@ -37,6 +39,8 @@ python app.py --open-browser
 
 Open **http://127.0.0.1:7861**, click **Start notebook**, and wait for **Ready for chat**. The app creates/updates a private notebook named `deepseek-r1-32b-local-chat` in your account: do not use that slug for an unrelated notebook. An active run is not submitted twice.
 
+The local administration console requires login even without `--share`. On first launch it generates credentials in `.state/access.json`; read that file privately to sign in. You can set `GRADIO_USER` and `GRADIO_PASSWORD` before the first launch instead. These console credentials are separate from the Kaggle chat credentials. Do not share the local console password with ordinary chat guests.
+
 **Stop Generation** cancels a response. **Stop notebook** requests session shutdown. During queueing/build/download, shutdown is deferred until the host API becomes ready; it is not an immediate Kaggle cancellation. Once ready, shutdown normally releases the VM within about 15 seconds. Closing the local app does not immediately stop Kaggle; use the shutdown button first. A session deadline and Kaggle execution timeout also apply.
 
 ## Chat and sharing
@@ -48,6 +52,8 @@ Open **http://127.0.0.1:7861**, click **Start notebook**, and wait for **Ready f
 - Context policies to retain recent turns or reject overflow while retaining all turns.
 
 Input, history, reasoning, and output share the context window. An 8192-token output request is capped to the space remaining after input. Recent-turn mode may omit old pairs from a request; the latest prompt is preserved.
+
+Conversation text is limited to 1 MiB per request and 200 messages. This app provides text chat; it does not accept model image/document inputs. See [SECURITY.md](SECURITY.md) for the audit scope and known dependency limitations.
 
 In **Share chat with other users**, click **Get shared chat login** for the temporary Kaggle Gradio URL and its username/password. Users have separate conversation state but share one inference slot and a queue of up to 32 requests, all against the owner's quota. The URL expires with the session. The shared chat password does not grant Kaggle access; backend shutdown additionally requires a separate admin token.
 

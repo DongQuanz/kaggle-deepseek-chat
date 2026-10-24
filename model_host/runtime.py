@@ -87,7 +87,7 @@ def hardware():
 
 def build():
     run([sys.executable, "-m", "pip", "install", "gradio==6.30.0", "gradio_client==2.7.2",
-         "huggingface_hub>=0.30,<3", "requests>=2.32,<3", "psutil>=5.9", "cryptography>=44,<50"])
+         "huggingface_hub>=0.30,<3", "requests>=2.32,<3", "psutil>=5.9", "cryptography>=50.0.2,<51"])
     bootstrap()
     notify("Building llama.cpp with CUDA")
     repo = Path(CONFIG["scratch"]) / "llama.cpp"
